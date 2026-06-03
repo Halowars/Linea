@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Linea</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <div class="view-controls" aria-label="View controls">
+        <button id="toggleSidebarButton" type="button" title="Show or hide sidebar" aria-label="Show or hide sidebar">
+          <span class="icon-sidebar" aria-hidden="true"></span>
+        </button>
+        <button id="toggleToolbarButton" type="button" title="Show or hide toolbar" aria-label="Show or hide toolbar">
+          <span class="icon-toolbar" aria-hidden="true"></span>
+        </button>
+        <button id="toggleMusicButton" type="button" title="Show or hide music" aria-label="Show or hide music">
+          <span class="icon-music" aria-hidden="true"></span>
+        </button>
+        <span id="saveStatus" class="save-status">Autosaved</span>
+      </div>
+
+      <aside class="sidebar" aria-label="Documents and appearance">
+        <nav class="sidebar-tabs" aria-label="Sidebar sections">
+          <button class="active" type="button" data-tab="drafts">Drafts</button>
+          <button type="button" data-tab="looks">Looks</button>
+          <button type="button" data-tab="spell">Spell Check</button>
+          <button type="button" data-tab="sound">Sound</button>
+          <button type="button" data-tab="files">Files</button>
+        </nav>
+
+        <div class="tab-panels">
+          <section class="panel active" data-panel="drafts">
+            <div class="panel-title">
+              <h2>Drafts</h2>
+              <button class="icon-button" id="newDraftButton" type="button" title="New draft" aria-label="New draft">+</button>
+            </div>
+            <div class="draft-list" id="draftList" aria-label="Saved drafts"></div>
+          </section>
+
+          <section class="panel" data-panel="looks">
+            <h2>Looks</h2>
+            <div class="preview-card">
+              <div class="preview-bg" id="previewBackground"></div>
+              <div class="preview-page">
+                <strong>Chapter One</strong>
+                <span>Tristan tight ass sparkled in the moon light.</span>
+              </div>
+            </div>
+            <div class="style-presets" id="stylePresets" aria-label="Background presets">
+              <button type="button" data-preset="mod-circles">
+                <span class="preset-swatch preset-mod-circles" aria-hidden="true"></span>
+                <span>Mod Circles</span>
+              </button>
+              <button type="button" data-preset="sunset-waves">
+                <span class="preset-swatch preset-sunset-waves" aria-hidden="true"></span>
+                <span>Sunset Waves</span>
+              </button>
+              <button type="button" data-preset="midnight-dots">
+                <span class="preset-swatch preset-midnight-dots" aria-hidden="true"></span>
+                <span>Midnight Dots</span>
+              </button>
+            </div>
+            <label>
+              Background asset
+              <select id="backgroundAssetSelect">
+                <option value="">Pattern background</option>
+              </select>
+            </label>
+            <div class="inline-actions">
+              <button id="previewBackgroundAssetButton" type="button">Preview</button>
+              <button id="clearBackgroundButton" type="button">Clear</button>
+            </div>
+            <label>
+              Background opacity
+              <input id="backgroundOpacity" type="range" min="0" max="100" value="38" />
+            </label>
+            <label>
+              Text
+              <input id="textColor" type="color" />
+            </label>
+            <label>
+              Page
+              <input id="pageColor" type="color" />
+            </label>
+            <label>
+              Interface
+              <input id="accentColor" type="color" />
+            </label>
+            <label>
+              Sidebar
+              <input id="sidebarColor" type="color" />
+            </label>
+            <label>
+              Toolbar
+              <input id="toolbarColor" type="color" />
+            </label>
+            <label>
+              Control bubble
+              <input id="controlBubbleColor" type="color" />
+            </label>
+            <label>
+              Buttons
+              <input id="buttonColor" type="color" />
+            </label>
+            <label>
+              Button text
+              <input id="buttonTextColor" type="color" />
+            </label>
+          </section>
+
+          <section class="panel" data-panel="sound">
+            <h2>Sound</h2>
+            <label class="toggle-row">
+              Typewriter sounds
+              <input id="soundToggle" type="checkbox" />
+            </label>
+            <label>
+              Volume
+              <input id="soundVolume" type="range" min="0" max="100" value="35" />
+            </label>
+            <label>
+              Typing sound
+              <select id="keySoundSelect">
+                <option value="">Soft click</option>
+              </select>
+            </label>
+            <button id="previewKeySoundButton" type="button">Preview Sound</button>
+            <p class="music-status" id="musicStatus">Paste a YouTube link to build a queue.</p>
+            <form class="music-add-form" id="musicAddForm">
+              <input id="musicUrlInput" type="url" placeholder="YouTube link" aria-label="YouTube song link" />
+              <button type="submit">+</button>
+            </form>
+            <div id="youtubePlayer"></div>
+            <div class="music-queue" id="musicQueue" aria-label="Song queue"></div>
+          </section>
+
+          <section class="panel" data-panel="spell">
+            <h2>Spell Check</h2>
+            <div class="spell-results" id="spellResults" aria-live="polite">
+              <p>Live spell check is watching as you write.</p>
+            </div>
+          </section>
+
+          <section class="panel" data-panel="files">
+            <h2>Files</h2>
+            <button id="downloadHtmlButton" type="button">Download File</button>
+            <button id="downloadTextButton" type="button">Download Text</button>
+            <label class="file-import">
+              Import Draft
+              <input id="importFile" type="file" accept=".html,.txt,.json,text/html,text/plain,application/json" />
+            </label>
+            <label class="asset-drop" id="assetDropZone">
+              <strong>Drop Custom Assets</strong>
+              <span>Images, GIFs, and sounds</span>
+              <input id="assetFileInput" type="file" accept="image/*,audio/*,.gif" multiple />
+            </label>
+            <div class="asset-library" id="assetLibrary" aria-label="Custom asset library"></div>
+          </section>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <div class="topbar" role="toolbar" aria-label="Formatting tools">
+          <button type="button" data-command="bold" title="Bold" aria-label="Bold"><strong>B</strong></button>
+          <button type="button" data-command="italic" title="Italic" aria-label="Italic"><em>I</em></button>
+          <button type="button" data-command="underline" title="Underline" aria-label="Underline"><span class="underline">U</span></button>
+          <button type="button" data-command="strikeThrough" title="Strikethrough" aria-label="Strikethrough"><span class="strike">S</span></button>
+          <select id="blockFormat" aria-label="Text style">
+            <option value="p">Paragraph</option>
+            <option value="h1">Title</option>
+            <option value="h2">Heading</option>
+            <option value="blockquote">Quote</option>
+          </select>
+          <input id="formatColor" type="color" title="Selected text color" aria-label="Selected text color" />
+          <button type="button" data-command="insertUnorderedList" title="Bullet list" aria-label="Bullet list">*</button>
+          <button type="button" data-command="insertOrderedList" title="Numbered list" aria-label="Numbered list">1.</button>
+          <button type="button" data-command="undo" title="Undo" aria-label="Undo">Undo</button>
+          <button type="button" data-command="redo" title="Redo" aria-label="Redo">Redo</button>
+          <button id="quickExportButton" class="topbar-command" type="button" title="Export pretty file" aria-label="Export pretty file">Export</button>
+          <div class="stats" id="stats">0 words</div>
+        </div>
+
+        <div class="page-wrap">
+          <div class="background-layer" id="backgroundLayer"></div>
+          <article
+            id="editor"
+            class="editor"
+            contenteditable="true"
+            spellcheck="true"
+            aria-label="Writing editor"
+          ></article>
+        </div>
+      </main>
+
+      <section class="music-player" aria-label="YouTube music player">
+        <div class="music-backdrop" id="musicBackdrop"></div>
+        <div class="music-controls">
+          <button id="previousSongButton" type="button" aria-label="Previous song" title="Previous"><span class="music-icon previous" aria-hidden="true"></span></button>
+          <button id="playPauseButton" class="is-paused" type="button" aria-label="Play" title="Play"><span class="music-icon play-pause" aria-hidden="true"></span></button>
+          <button id="nextSongButton" type="button" aria-label="Next song" title="Next"><span class="music-icon next" aria-hidden="true"></span></button>
+        </div>
+      </section>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
