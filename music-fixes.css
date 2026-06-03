@@ -1,0 +1,61 @@
+/* Music player fixes: keep the YouTube player visible and lay out queued songs cleanly. */
+#youtubePlayer {
+  display: block !important;
+  width: 100% !important;
+  height: auto !important;
+  aspect-ratio: 16 / 9;
+  margin: 8px 0 10px;
+  overflow: hidden;
+  background: #111;
+  border-radius: 7px;
+}
+
+#youtubePlayer:empty {
+  display: none !important;
+}
+
+#youtubePlayer iframe {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  border: 0;
+}
+
+.music-queue-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.music-queue-row .music-queue-song {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 8px;
+}
+
+.music-queue-row.active .music-queue-song {
+  border-color: color-mix(in srgb, var(--accent), transparent 36%);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.music-remove-button {
+  display: grid !important;
+  place-items: center;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0 !important;
+  text-align: center;
+}
+
+.music-queue-row .music-queue-song span,
+.music-queue-row .music-queue-song strong {
+  min-width: 0;
+}
