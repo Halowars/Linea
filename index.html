@@ -25,7 +25,6 @@
         <nav class="sidebar-tabs" aria-label="Sidebar sections">
           <button class="active" type="button" data-tab="drafts">Drafts</button>
           <button type="button" data-tab="looks">Looks</button>
-          <button type="button" data-tab="spell">Spell Check</button>
           <button type="button" data-tab="sound">Sound</button>
           <button type="button" data-tab="files">Files</button>
         </nav>
@@ -136,13 +135,6 @@
             <div class="music-queue" id="musicQueue" aria-label="Song queue"></div>
           </section>
 
-          <section class="panel" data-panel="spell">
-            <h2>Spell Check</h2>
-            <div class="spell-results" id="spellResults" aria-live="polite">
-              <p>Live spell check is watching as you write.</p>
-            </div>
-          </section>
-
           <section class="panel" data-panel="files">
             <h2>Files</h2>
             <button id="downloadHtmlButton" type="button">Download File</button>
@@ -205,6 +197,5 @@
     </div>
 
     <script src="app.js"></script>
-    <script src="editor-fixes.js"></script>
   </body>
 </html>
