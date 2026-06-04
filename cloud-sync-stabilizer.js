@@ -13,7 +13,6 @@
   const accountName = document.querySelector("#accountName");
   const accountStatus = document.querySelector("#accountStatus");
   const editor = document.querySelector("#editor");
-  const draftList = document.querySelector("#draftList");
 
   const config = window.LINEA_FIREBASE_CONFIG_PRIVATE || window.LINEA_FIREBASE_CONFIG;
   if (!accountStatus || !config?.apiKey) return;
@@ -352,7 +351,6 @@
   }, true);
 
   editor?.addEventListener("input", () => schedulePush(250));
-  draftList?.addEventListener("click", () => window.setTimeout(() => schedulePush(450), 0));
   document.querySelector("#newDraftButton")?.addEventListener("click", () => window.setTimeout(() => schedulePush(450), 0));
   window.addEventListener("beforeunload", () => {
     if (currentUser && services) writeCloud(localStatePayload()).catch(() => {});
