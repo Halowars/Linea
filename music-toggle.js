@@ -2,11 +2,14 @@
   const playButton = document.querySelector("#playPauseButton");
   const youtubePlayer = document.querySelector("#youtubePlayer");
   const musicStatus = document.querySelector("#musicStatus");
+  const musicQueue = document.querySelector("#musicQueue");
 
   if (!playButton || !youtubePlayer) return;
 
+  let ytPlayer = null;
+  let apiReadyPromise = null;
+  let activeVideoId = "";
   let isPlaying = false;
-  let currentVideoId = "";
 
   function getActiveSong() {
     try {
@@ -14,15 +17,6 @@
     } catch {
       return null;
     }
-  }
-
-  function getOriginParam() {
-    if (!location.origin || location.origin === "null") return "";
-    return `&origin=${encodeURIComponent(location.origin)}`;
-  }
-
-  function buildSrc(videoId, autoplay = false) {
-    return `https://www.youtube.com/embed/${videoId}?rel=0&playsinline=1&enablejsapi=1${getOriginParam()}${autoplay ? "&autoplay=1" : ""}`;
   }
 
   function setButtonState(playing) {
@@ -33,48 +27,113 @@
     playButton.setAttribute("aria-label", playing ? "Pause" : "Play");
   }
 
-  function loadFrame(song, autoplay = false) {
-    if (!song?.videoId) return null;
-    let iframe = youtubePlayer.querySelector("iframe");
-    if (!iframe || currentVideoId !== song.videoId) {
-      youtubePlayer.innerHTML = `<iframe width="200" height="200" src="${buildSrc(song.videoId, autoplay)}" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen></iframe>`;
-      currentVideoId = song.videoId;
-      iframe = youtubePlayer.querySelector("iframe");
+  function loadYouTubeApi() {
+    if (window.YT?.Player) return Promise.resolve();
+    if (apiReadyPromise) return apiReadyPromise;
+
+    apiReadyPromise = new Promise((resolve) => {
+      const previousReady = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => {
+        previousReady?.();
+        resolve();
+      };
+
+      if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
+        const script = document.createElement("script");
+        script.src = "https://www.youtube.com/iframe_api";
+        document.head.append(script);
+      }
+    });
+
+    return apiReadyPromise;
+  }
+
+  async function loadPlayer(song, autoplay = false) {
+    if (!song?.videoId) return;
+    await loadYouTubeApi();
+
+    if (ytPlayer && activeVideoId === song.videoId) {
+      if (autoplay) ytPlayer.playVideo();
+      return;
     }
-    return iframe;
+
+    if (ytPlayer?.destroy) {
+      try {
+        ytPlayer.destroy();
+      } catch {}
+    }
+
+    youtubePlayer.innerHTML = '<div id="youtubeIframeTarget"></div>';
+    activeVideoId = song.videoId;
+
+    ytPlayer = new YT.Player("youtubeIframeTarget", {
+      videoId: song.videoId,
+      playerVars: {
+        rel: 0,
+        playsinline: 1,
+        origin: location.origin && location.origin !== "null" ? location.origin : undefined,
+      },
+      events: {
+        onReady: (event) => {
+          if (autoplay) event.target.playVideo();
+        },
+        onStateChange: (event) => {
+          if (event.data === YT.PlayerState.PLAYING) {
+            setButtonState(true);
+            if (musicStatus) musicStatus.textContent = "Playing selected YouTube song.";
+          }
+
+          if (event.data === YT.PlayerState.PAUSED) {
+            setButtonState(false);
+            if (musicStatus) musicStatus.textContent = "Paused.";
+          }
+
+          if (event.data === YT.PlayerState.ENDED) {
+            setButtonState(false);
+            playNextAfterEnd();
+          }
+        },
+        onError: () => {
+          setButtonState(false);
+          if (musicStatus) musicStatus.textContent = "That YouTube video could not be played here. Try another link.";
+        },
+      },
+    });
   }
 
-  function sendCommand(command) {
-    const iframe = youtubePlayer.querySelector("iframe");
-    if (!iframe?.contentWindow) return;
-    iframe.contentWindow.postMessage(
-      JSON.stringify({ event: "command", func: command, args: [] }),
-      "https://www.youtube.com"
-    );
-  }
-
-  function play() {
+  async function play() {
     const song = getActiveSong();
     if (!song) {
       if (musicStatus) musicStatus.textContent = "Paste a YouTube link first.";
       return;
     }
 
-    const iframeAlreadyLoaded = currentVideoId === song.videoId && youtubePlayer.querySelector("iframe");
-    loadFrame(song, !iframeAlreadyLoaded);
-
-    if (iframeAlreadyLoaded) {
-      sendCommand("playVideo");
-    }
-
+    await loadPlayer(song, true);
+    try {
+      ytPlayer?.playVideo?.();
+    } catch {}
     setButtonState(true);
-    if (musicStatus) musicStatus.textContent = "Playing selected YouTube song.";
   }
 
   function pause() {
-    sendCommand("pauseVideo");
+    try {
+      ytPlayer?.pauseVideo?.();
+    } catch {}
     setButtonState(false);
     if (musicStatus) musicStatus.textContent = "Paused.";
+  }
+
+  function playNextAfterEnd() {
+    try {
+      const queue = state?.music?.queue || [];
+      if (queue.length < 2) return;
+
+      state.music.activeIndex = (state.music.activeIndex + 1) % queue.length;
+      activeVideoId = "";
+      renderMusic?.();
+      saveSoon?.();
+      window.setTimeout(() => play(), 80);
+    } catch {}
   }
 
   playButton.addEventListener(
@@ -88,10 +147,9 @@
     true
   );
 
-  document.querySelector("#musicQueue")?.addEventListener("click", () => {
+  musicQueue?.addEventListener("click", () => {
+    activeVideoId = "";
     setButtonState(false);
-    const song = getActiveSong();
-    currentVideoId = song?.videoId || "";
   });
 
   setButtonState(false);
