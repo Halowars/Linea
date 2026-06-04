@@ -24,7 +24,7 @@
   let applyingRemote = false;
   let pushTimer = 0;
   let lastCloudHash = "";
-  let started = false;
+  let initialSyncComplete = false;
 
   function setStatus(message, error = false) {
     accountStatus.textContent = message;
@@ -163,9 +163,7 @@
   function applyPayload(payload) {
     const normalized = normalizePayload(payload);
     if (!normalized.drafts.length) return false;
-    const localHash = payloadHash(localStatePayload());
-    const incomingHash = payloadHash(normalized);
-    if (localHash === incomingHash) return false;
+    if (payloadHash(localStatePayload()) === payloadHash(normalized)) return false;
 
     applyingRemote = true;
     writeRawDrafts(normalized);
@@ -180,7 +178,7 @@
     }
     window.setTimeout(() => {
       applyingRemote = false;
-    }, 250);
+    }, 150);
     return true;
   }
 
@@ -217,6 +215,7 @@
   async function writeCloud(payload = localStatePayload()) {
     if (!currentUser || !services || applyingRemote) return;
     const normalized = normalizePayload(payload);
+    if (!normalized.drafts.length) return;
     const size = payloadSize(normalized);
     if (size > 900_000) throw Object.assign(new Error("Cloud draft document is too large"), { code: "linea/document-too-large" });
     await services.setDoc(cloudRef(), {
@@ -227,16 +226,16 @@
     lastCloudHash = payloadHash(normalized);
   }
 
-  async function syncNow(label = true) {
+  async function syncNow(label = true, merge = true) {
     if (!currentUser || !services) return;
     try {
       if (label) setStatus("Syncing drafts...");
       const snap = await services.getDoc(cloudRef());
       const local = localStatePayload();
       const cloud = snap.exists() ? snap.data() : { drafts: [] };
-      const merged = mergePayloads(local, cloud);
-      const changedLocal = applyPayload(merged);
-      await writeCloud(merged);
+      const next = merge ? mergePayloads(local, cloud) : normalizePayload(local);
+      const changedLocal = merge ? applyPayload(next) : false;
+      await writeCloud(next);
       setOnlineState(true);
       if (!changedLocal) setStatus("Drafts synced.");
     } catch (error) {
@@ -248,6 +247,7 @@
 
   async function startSync(user) {
     currentUser = user;
+    initialSyncComplete = false;
     if (unsubscribe) unsubscribe();
     unsubscribe = null;
     if (!user) {
@@ -257,19 +257,19 @@
     }
     try {
       await loadServices();
-      await syncNow(false);
+      await syncNow(false, true);
+      initialSyncComplete = true;
       unsubscribe = services.onSnapshot(
         cloudRef(),
         { includeMetadataChanges: false },
-        async (snapshot) => {
-          if (!snapshot.exists() || snapshot.metadata.hasPendingWrites || applyingRemote) return;
+        (snapshot) => {
+          if (!snapshot.exists() || snapshot.metadata.hasPendingWrites || applyingRemote || !initialSyncComplete) return;
           try {
-            const local = localStatePayload();
-            const remote = snapshot.data();
-            const merged = mergePayloads(local, remote);
-            const mergedHash = payloadHash(merged);
-            if (mergedHash !== payloadHash(remote)) await writeCloud(merged);
-            const changedLocal = mergedHash !== payloadHash(local) ? applyPayload(merged) : false;
+            const remote = normalizePayload(snapshot.data());
+            const remoteHash = payloadHash(remote);
+            if (remoteHash === lastCloudHash) return;
+            lastCloudHash = remoteHash;
+            const changedLocal = applyPayload(remote);
             setOnlineState(true);
             if (!changedLocal) setStatus("Drafts synced.");
           } catch (error) {
@@ -290,10 +290,20 @@
     }
   }
 
-  function schedulePush() {
+  function schedulePush(delay = 250) {
     if (!currentUser || applyingRemote) return;
     clearTimeout(pushTimer);
-    pushTimer = window.setTimeout(() => syncNow(false).catch(() => {}), 900);
+    pushTimer = window.setTimeout(async () => {
+      try {
+        setStatus("Syncing drafts...");
+        await writeCloud(localStatePayload());
+        setOnlineState(true);
+        setStatus("Drafts synced.");
+      } catch (error) {
+        setOnlineState(false);
+        setStatus(`Could not sync drafts: ${code(error)}`, true);
+      }
+    }, delay);
   }
 
   async function login(createAccount = false) {
@@ -338,12 +348,12 @@
   syncNowButton?.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopImmediatePropagation();
-    syncNow(true).catch(() => {});
+    syncNow(true, true).catch(() => {});
   }, true);
 
-  editor?.addEventListener("input", schedulePush);
-  draftList?.addEventListener("click", () => window.setTimeout(schedulePush, 0));
-  document.querySelector("#newDraftButton")?.addEventListener("click", () => window.setTimeout(schedulePush, 0));
+  editor?.addEventListener("input", () => schedulePush(250));
+  draftList?.addEventListener("click", () => window.setTimeout(() => schedulePush(450), 0));
+  document.querySelector("#newDraftButton")?.addEventListener("click", () => window.setTimeout(() => schedulePush(450), 0));
   window.addEventListener("beforeunload", () => {
     if (currentUser && services) writeCloud(localStatePayload()).catch(() => {});
   });
@@ -365,12 +375,7 @@
           setStatus("Log in only if you want drafts across devices.");
           return;
         }
-        if (!started) {
-          started = true;
-          startSync(user);
-        } else {
-          startSync(user);
-        }
+        startSync(user);
       });
     })
     .catch((error) => setStatus(`Firebase setup failed: ${code(error)}`, true));
