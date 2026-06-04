@@ -6,7 +6,7 @@
     <title>Linea</title>
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="sync-card.css" />
-    <link rel="stylesheet" href="editor-stability.css" />
+    <link rel="stylesheet" href="editor-polish.css" />
   </head>
   <body>
     <div class="app-shell">
@@ -27,7 +27,6 @@
         <nav class="sidebar-tabs" aria-label="Sidebar sections">
           <button class="active" type="button" data-tab="drafts">Drafts</button>
           <button type="button" data-tab="looks">Looks</button>
-          <button type="button" data-tab="spell">Spell Check</button>
           <button type="button" data-tab="sound">Sound</button>
           <button type="button" data-tab="files">Files</button>
         </nav>
@@ -161,13 +160,6 @@
             <div class="music-queue" id="musicQueue" aria-label="Song queue"></div>
           </section>
 
-          <section class="panel" data-panel="spell">
-            <h2>Spell Check</h2>
-            <div class="spell-results" id="spellResults" aria-live="polite">
-              <p>Live spell check is watching as you write.</p>
-            </div>
-          </section>
-
           <section class="panel" data-panel="files">
             <h2>Files</h2>
             <button id="downloadHtmlButton" type="button">Download File</button>
@@ -198,16 +190,18 @@
             <option value="h2">Heading</option>
             <option value="blockquote">Quote</option>
           </select>
-          <select id="fontSizeSelect" aria-label="Font size" title="Font size">
-            <option value="">Size</option>
-            <option value="16">16</option>
-            <option value="18">18</option>
-            <option value="20">20</option>
-            <option value="22">22</option>
-            <option value="24">24</option>
-            <option value="28">28</option>
-            <option value="32">32</option>
-          </select>
+          <input id="fontSizeSelect" list="fontSizeOptions" inputmode="numeric" pattern="[0-9]*" aria-label="Font size" title="Font size" placeholder="Size" />
+          <datalist id="fontSizeOptions">
+            <option value="16"></option>
+            <option value="18"></option>
+            <option value="20"></option>
+            <option value="22"></option>
+            <option value="24"></option>
+            <option value="28"></option>
+            <option value="32"></option>
+            <option value="36"></option>
+            <option value="48"></option>
+          </datalist>
           <input id="formatColor" type="color" title="Selected text color" aria-label="Selected text color" />
           <button id="hangingIndentButton" type="button" title="Hanging indent" aria-label="Hanging indent">Hang</button>
           <button id="doubleSpacingButton" type="button" title="Double spacing" aria-label="Double spacing">2x</button>
@@ -242,8 +236,8 @@
     </div>
 
     <script src="firebase-config.js"></script>
+    <script src="editor-polish.js"></script>
     <script src="app.js"></script>
     <script src="sync-card.js"></script>
-    <script src="editor-stability.js"></script>
   </body>
 </html>
