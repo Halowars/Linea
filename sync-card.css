@@ -5,7 +5,7 @@
 
 .account-card.sync-collapsible .account-heading {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 8px;
   align-items: center;
   padding: 10px 10px 8px;
@@ -18,6 +18,25 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.sync-status-dot {
+  width: 10px;
+  min-width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #c64040;
+  box-shadow: 0 0 0 2px color-mix(in srgb, #c64040, transparent 82%);
+}
+
+.account-card.sync-online .sync-status-dot {
+  background: #2ba84a;
+  box-shadow: 0 0 0 2px color-mix(in srgb, #2ba84a, transparent 82%);
+}
+
+.account-card.sync-error .sync-status-dot {
+  background: #c64040;
+  box-shadow: 0 0 0 2px color-mix(in srgb, #c64040, transparent 82%);
 }
 
 .sync-toggle-button {
