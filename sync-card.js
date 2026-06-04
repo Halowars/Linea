@@ -4,10 +4,17 @@
   const status = document.querySelector("#accountStatus");
   const form = document.querySelector("#accountForm");
   const signedIn = document.querySelector("#accountSignedIn");
+  const accountState = document.querySelector("#accountState");
 
   if (!card || !heading || !status) return;
 
   card.classList.add("sync-collapsible", "sync-collapsed");
+
+  const dot = document.createElement("span");
+  dot.className = "sync-status-dot";
+  dot.title = "Sync offline";
+  dot.setAttribute("aria-label", "Sync offline");
+  heading.append(dot);
 
   const toggle = document.createElement("button");
   toggle.type = "button";
@@ -34,6 +41,18 @@
     card.classList.toggle("sync-collapsed", !expanded);
     toggle.textContent = expanded ? "−" : "+";
     toggle.setAttribute("aria-label", expanded ? "Collapse optional sync" : "Expand optional sync");
+  }
+
+  function updateDot() {
+    const text = `${status.textContent || ""} ${accountState?.textContent || ""}`.toLowerCase();
+    const online = /draft sync is on|drafts synced|synced|syncing drafts/.test(text) && !/could not|lost|failed|error|local only|off/.test(text);
+    const error = /could not|lost|failed|error|check firebase rules/.test(text);
+
+    card.classList.toggle("sync-online", online && !error);
+    card.classList.toggle("sync-error", error || !online);
+
+    dot.title = online && !error ? "Sync online" : "Sync offline or needs attention";
+    dot.setAttribute("aria-label", dot.title);
   }
 
   heading.addEventListener("click", (event) => {
@@ -64,9 +83,13 @@
           delete this.dataset.syncError;
         }
         originalStatusDescriptor.set.call(this, text);
+        updateDot();
       },
     });
   }
+
+  new MutationObserver(updateDot).observe(status, { childList: true, characterData: true, subtree: true });
+  if (accountState) new MutationObserver(updateDot).observe(accountState, { childList: true, characterData: true, subtree: true });
 
   document.querySelector("#syncHelpButton")?.addEventListener("click", () => {
     const detail = document.querySelector("#syncDiagnosticDetail");
@@ -83,4 +106,6 @@
 
     detail.textContent = checks.join(" • ");
   });
+
+  updateDot();
 })();
