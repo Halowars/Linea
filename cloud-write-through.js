@@ -92,7 +92,7 @@
     });
   }
 
-  function scheduleWrite(reason, delay = 70) {
+  function scheduleWrite(reason, delay = 850) {
     clearTimeout(pushTimer);
     pushTimer = window.setTimeout(() => pushCurrentState(reason).catch(() => {}), delay);
   }
@@ -105,7 +105,7 @@
       const after = idsFromState(readState());
       const deleted = before ? hasDeletion(before, after) : false;
       lastIds = after;
-      if (deleted) scheduleWrite("delete", 20);
+      if (deleted) scheduleWrite("delete", 350);
     }
     return result;
   };
@@ -116,9 +116,9 @@
       const currentIds = idsFromState(readState());
       if (hasDeletion(lastIds, currentIds)) {
         lastIds = currentIds;
-        scheduleWrite("delete", 20);
+        scheduleWrite("delete", 650);
       }
-    }, 0),
+    }, 650),
     true
   );
 
