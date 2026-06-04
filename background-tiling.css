@@ -1,7 +1,7 @@
 .background-layout-card {
   display: grid;
-  gap: 10px;
-  padding: 12px;
+  gap: 0;
+  padding: 0;
   overflow: hidden;
   background:
     linear-gradient(135deg, rgba(255,255,255,.7), rgba(255,255,255,.38)),
@@ -16,23 +16,40 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
+  padding: 11px 12px;
+  cursor: pointer;
 }
 
 .background-layout-heading strong {
+  overflow: hidden;
+  min-width: 0;
   color: var(--text);
   font-size: 0.88rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.background-layout-badge {
-  padding: 3px 7px;
-  color: color-mix(in srgb, var(--accent), #111 28%);
-  background: color-mix(in srgb, var(--accent), transparent 84%);
-  border: 1px solid color-mix(in srgb, var(--accent), transparent 62%);
+.background-layout-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
   border-radius: 999px;
-  font-size: 0.66rem;
-  font-weight: 700;
-  letter-spacing: .02em;
-  text-transform: uppercase;
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+.background-layout-body {
+  display: grid;
+  gap: 10px;
+  padding: 0 12px 12px;
+}
+
+.background-layout-card.collapsed .background-layout-body {
+  display: none;
 }
 
 .background-mode-grid {
@@ -97,26 +114,6 @@
   font-size: 0.78rem;
 }
 
-.tile-preview-strip {
-  display: grid;
-  place-items: center;
-  min-height: 54px;
-  overflow: hidden;
-  background:
-    linear-gradient(135deg, rgba(255,255,255,.42), rgba(255,255,255,.1)),
-    repeating-linear-gradient(45deg, rgba(42,36,46,.08) 0 8px, transparent 8px 16px);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-}
-
-.tile-preview-strip span {
-  padding: 4px 8px;
-  color: var(--muted);
-  background: color-mix(in srgb, var(--paper), transparent 12%);
-  border-radius: 999px;
-  font-size: 0.7rem;
-}
-
 .background-layout-help {
   margin: 0;
   color: var(--muted);
@@ -138,8 +135,16 @@
 }
 
 body.ipad-mode .background-layout-card {
+  border-radius: 10px;
+}
+
+body.ipad-mode .background-layout-heading {
+  padding: 13px 14px;
+}
+
+body.ipad-mode .background-layout-body {
   gap: 12px;
-  padding: 14px;
+  padding: 0 14px 14px;
 }
 
 body.ipad-mode .background-mode-option {
