@@ -6,6 +6,8 @@
   if (!editor) return;
 
   const originalSetTimeout = window.setTimeout;
+  let preferredMode = blockFormat?.value || "p";
+
   window.setTimeout = function patchedSetTimeout(callback, delay, ...args) {
     const name = callback?.name || "";
     const source = typeof callback === "function" ? Function.prototype.toString.call(callback) : "";
@@ -38,6 +40,10 @@
     return null;
   }
 
+  function blockTagForMode() {
+    return ["p", "h1", "h2", "blockquote"].includes(preferredMode) ? preferredMode : "p";
+  }
+
   function placeCaretEnd(element) {
     if (!element.firstChild) element.append(document.createElement("br"));
     const range = document.createRange();
@@ -52,14 +58,19 @@
     editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertParagraph" }));
   }
 
-  function insertParagraphAfter(block) {
-    const paragraph = document.createElement("p");
-    paragraph.append(document.createElement("br"));
-    if (block.classList.contains("double-space")) paragraph.classList.add("double-space");
-    if (block.classList.contains("hanging-indent")) paragraph.classList.add("hanging-indent");
-    block.after(paragraph);
-    placeCaretEnd(paragraph);
-    if (blockFormat) blockFormat.value = "p";
+  function copyWritingHelpers(from, to) {
+    if (from.classList.contains("double-space")) to.classList.add("double-space");
+    if (from.classList.contains("hanging-indent")) to.classList.add("hanging-indent");
+  }
+
+  function insertNextBlock(block) {
+    const tag = blockTagForMode();
+    const next = document.createElement(tag);
+    next.append(document.createElement("br"));
+    copyWritingHelpers(block, next);
+    block.after(next);
+    placeCaretEnd(next);
+    if (blockFormat) blockFormat.value = tag;
     saveThroughApp();
   }
 
@@ -70,11 +81,10 @@
       const block = currentBlock();
       if (!block) return;
 
-      event.stopImmediatePropagation();
-
-      if (["H1", "H2", "BLOCKQUOTE"].includes(block.tagName)) {
+      if (["H1", "H2", "BLOCKQUOTE"].includes(block.tagName) || blockTagForMode() !== "p") {
         event.preventDefault();
-        insertParagraphAfter(block);
+        event.stopImmediatePropagation();
+        insertNextBlock(block);
       }
     },
     true
@@ -83,7 +93,8 @@
   blockFormat?.addEventListener(
     "change",
     () => {
-      const requested = blockFormat.value;
+      preferredMode = blockFormat.value || "p";
+      const requested = preferredMode;
       originalSetTimeout(() => {
         if (!["h1", "h2", "blockquote", "p"].includes(requested)) return;
         const selection = getSelection();
@@ -101,6 +112,13 @@
     },
     true
   );
+
+  editor.addEventListener("mouseup", () => {
+    if (!blockFormat) return;
+    const block = currentBlock();
+    const tag = block?.tagName?.toLowerCase();
+    if (["p", "h1", "h2", "blockquote"].includes(tag)) blockFormat.value = preferredMode;
+  });
 
   if (fontSizeInput) {
     fontSizeInput.addEventListener("change", () => {
