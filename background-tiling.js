@@ -88,14 +88,8 @@
       </div>
       <div class="background-layout-body">
         <div class="background-mode-grid" id="backgroundLayoutMode" role="group" aria-label="Background layout mode">
-          <button class="background-mode-option" type="button" data-background-mode="cover">
-            <span>Cover</span>
-            <small>One selected background image fills the screen.</small>
-          </button>
-          <button class="background-mode-option" type="button" data-background-mode="tile">
-            <span>Tile</span>
-            <small>Repeats the selected background image as a pattern.</small>
-          </button>
+          <button class="background-mode-option" type="button" data-background-mode="cover"><span>Cover</span></button>
+          <button class="background-mode-option" type="button" data-background-mode="tile"><span>Tile</span></button>
         </div>
         <div class="tile-size-row">
           <label>
@@ -104,7 +98,6 @@
           </label>
           <input id="backgroundTileSizeNumber" class="tile-size-number" type="number" min="16" max="480" step="1" aria-label="Tile size in pixels" />
         </div>
-        <p class="background-layout-help">Choose or upload background images in Files, then pick them from Background asset above.</p>
       </div>
     `;
 
