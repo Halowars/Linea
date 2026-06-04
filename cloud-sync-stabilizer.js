@@ -82,7 +82,7 @@
     const activeDraftId = capped.some((draft) => draft.id === payload?.activeDraftId)
       ? String(payload.activeDraftId)
       : capped[0]?.id || "";
-    return { activeDraftId, drafts };
+    return { activeDraftId, drafts: capped };
   }
 
   function readRawState() {
@@ -105,12 +105,17 @@
     const activeId = raw.activeDraftId;
     const active = Array.isArray(raw.drafts) ? raw.drafts.find((draft) => draft.id === activeId) : null;
     if (!active || !editor) return null;
+
     const html = cleanHtml(editor.innerHTML || active.html || "<p></p>");
+    const title = titleFromHtml(html, active.title);
+    const sameHtml = html === cleanHtml(active.html || "<p></p>");
+    const sameTitle = title === String(active.title || "Untitled story").slice(0, 120);
+
     return {
       ...active,
-      title: titleFromHtml(html, active.title),
+      title,
       html,
-      updatedAt: Date.now(),
+      updatedAt: sameHtml && sameTitle ? Number(active.updatedAt || Date.now()) : Date.now(),
     };
   }
 
@@ -152,7 +157,14 @@
 
   function payloadHash(payload) {
     const normalized = normalizePayload(payload);
-    return JSON.stringify({ activeDraftId: normalized.activeDraftId, drafts: normalized.drafts });
+    return JSON.stringify({
+      activeDraftId: normalized.activeDraftId,
+      drafts: normalized.drafts.map((draft) => ({
+        id: draft.id,
+        title: draft.title,
+        html: draft.html,
+      })),
+    });
   }
 
   function payloadSize(payload) {
@@ -225,15 +237,15 @@
     lastCloudHash = payloadHash(normalized);
   }
 
-  async function syncNow(label = true, merge = true) {
+  async function syncNow(label = true, preferCloud = true) {
     if (!currentUser || !services) return;
     try {
       if (label) setStatus("Syncing drafts...");
       const snap = await services.getDoc(cloudRef());
       const local = localStatePayload();
-      const cloud = snap.exists() ? snap.data() : { drafts: [] };
-      const next = merge ? mergePayloads(local, cloud) : normalizePayload(local);
-      const changedLocal = merge ? applyPayload(next) : false;
+      const cloud = snap.exists() ? normalizePayload(snap.data()) : normalizePayload({ drafts: [] });
+      const next = preferCloud && cloud.drafts.length ? cloud : local;
+      const changedLocal = preferCloud && cloud.drafts.length ? applyPayload(next) : false;
       await writeCloud(next);
       setOnlineState(true);
       if (!changedLocal) setStatus("Drafts synced.");
@@ -294,8 +306,13 @@
     clearTimeout(pushTimer);
     pushTimer = window.setTimeout(async () => {
       try {
+        const next = localStatePayload();
+        if (payloadHash(next) === lastCloudHash) {
+          setStatus("Drafts synced.");
+          return;
+        }
         setStatus("Syncing drafts...");
-        await writeCloud(localStatePayload());
+        await writeCloud(next);
         setOnlineState(true);
         setStatus("Drafts synced.");
       } catch (error) {
