@@ -1,5 +1,6 @@
 (() => {
   const STORAGE_KEY = "linea-background-layout-v2";
+  const COLLAPSE_KEY = "linea-background-layout-collapsed-v1";
   const looksPanel = document.querySelector('[data-panel="looks"]');
   const backgroundSelect = document.querySelector("#backgroundAssetSelect");
   const backgroundLayer = document.querySelector("#backgroundLayer");
@@ -40,26 +41,6 @@
     return [backgroundLayer, previewBackground].filter(Boolean);
   }
 
-  function setTilePreviewBackground(preview) {
-    const strip = document.querySelector("#tilePreviewStrip");
-    if (!strip) return;
-
-    const currentImage = preview?.style?.backgroundImage || backgroundLayer.style.backgroundImage || "";
-    if (settings.mode === "tile" && selectedCustomBackground() && currentImage && currentImage !== "none") {
-      strip.style.backgroundImage = currentImage;
-      strip.style.backgroundRepeat = "repeat";
-      strip.style.backgroundPosition = "top left";
-      strip.style.backgroundSize = `${settings.tileSize}px auto`;
-      strip.querySelector("span").textContent = `${settings.tileSize}px tile`;
-    } else {
-      strip.style.backgroundImage = "";
-      strip.style.backgroundRepeat = "";
-      strip.style.backgroundPosition = "";
-      strip.style.backgroundSize = "";
-      strip.querySelector("span").textContent = selectedCustomBackground() ? "Cover mode" : "Upload/select an image to tile";
-    }
-  }
-
   function applyLayout() {
     const useTile = settings.mode === "tile" && selectedCustomBackground();
 
@@ -86,8 +67,13 @@
     const number = document.querySelector("#backgroundTileSizeNumber");
     if (range && Number(range.value) !== settings.tileSize) range.value = String(settings.tileSize);
     if (number && Number(number.value) !== settings.tileSize) number.value = String(settings.tileSize);
+  }
 
-    setTilePreviewBackground(previewBackground || backgroundLayer);
+  function setCollapsed(card, button, collapsed) {
+    card.classList.toggle("collapsed", collapsed);
+    button.textContent = collapsed ? "+" : "−";
+    button.setAttribute("aria-label", collapsed ? "Expand background layout" : "Collapse background layout");
+    localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");
   }
 
   function buildControls() {
@@ -98,31 +84,47 @@
     card.innerHTML = `
       <div class="background-layout-heading">
         <strong>Background layout</strong>
-        <span class="background-layout-badge">Local</span>
+        <button class="background-layout-toggle" type="button" aria-label="Collapse background layout">−</button>
       </div>
-      <div class="background-mode-grid" id="backgroundLayoutMode" role="group" aria-label="Background layout mode">
-        <button class="background-mode-option" type="button" data-background-mode="cover">
-          <span>Cover</span>
-          <small>One image fills the screen.</small>
-        </button>
-        <button class="background-mode-option" type="button" data-background-mode="tile">
-          <span>Tile</span>
-          <small>Repeats uploaded image like a pattern.</small>
-        </button>
+      <div class="background-layout-body">
+        <div class="background-mode-grid" id="backgroundLayoutMode" role="group" aria-label="Background layout mode">
+          <button class="background-mode-option" type="button" data-background-mode="cover">
+            <span>Cover</span>
+            <small>One selected background image fills the screen.</small>
+          </button>
+          <button class="background-mode-option" type="button" data-background-mode="tile">
+            <span>Tile</span>
+            <small>Repeats the selected background image as a pattern.</small>
+          </button>
+        </div>
+        <div class="tile-size-row">
+          <label>
+            Tile size
+            <input id="backgroundTileSize" type="range" min="16" max="480" step="4" value="96" />
+          </label>
+          <input id="backgroundTileSizeNumber" class="tile-size-number" type="number" min="16" max="480" step="1" aria-label="Tile size in pixels" />
+        </div>
+        <p class="background-layout-help">Choose or upload background images in Files, then pick them from Background asset above.</p>
       </div>
-      <div class="tile-size-row">
-        <label>
-          Tile size
-          <input id="backgroundTileSize" type="range" min="16" max="480" step="4" value="96" />
-        </label>
-        <input id="backgroundTileSizeNumber" class="tile-size-number" type="number" min="16" max="480" step="1" aria-label="Tile size in pixels" />
-      </div>
-      <div class="tile-preview-strip" id="tilePreviewStrip"><span>Upload/select an image to tile</span></div>
-      <p class="background-layout-help">Tile mode works with uploaded image backgrounds. Preset backgrounds stay full screen.</p>
     `;
 
     const opacityLabel = document.querySelector("#backgroundOpacity")?.closest("label");
     looksPanel.insertBefore(card, opacityLabel || null);
+
+    const heading = card.querySelector(".background-layout-heading");
+    const toggle = card.querySelector(".background-layout-toggle");
+    const startCollapsed = localStorage.getItem(COLLAPSE_KEY) === "1";
+    setCollapsed(card, toggle, startCollapsed);
+
+    heading.addEventListener("click", (event) => {
+      if (event.target.closest("button") && event.target !== toggle) return;
+      setCollapsed(card, toggle, !card.classList.contains("collapsed"));
+    });
+
+    toggle.addEventListener("click", (event) => {
+      event.stopPropagation();
+      setCollapsed(card, toggle, !card.classList.contains("collapsed"));
+    });
 
     card.querySelectorAll("[data-background-mode]").forEach((button) => {
       button.addEventListener("click", () => {
