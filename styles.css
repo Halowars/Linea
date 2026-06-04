@@ -373,11 +373,62 @@ button:hover,
 
 .draft-list,
 .spell-results,
-.music-playlists,
 .music-queue {
   display: grid;
   gap: 8px;
   min-width: 0;
+}
+
+.account-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.account-heading,
+.account-signed-in {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.account-heading strong,
+.account-signed-in span {
+  overflow: hidden;
+  min-width: 0;
+  color: var(--text);
+  font-size: 0.84rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-heading span,
+.account-card p,
+.account-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.account-form {
+  display: grid;
+  gap: 8px;
+}
+
+.account-form input {
+  min-width: 0;
+  height: 34px;
+  padding: 0 9px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.58);
+  border: 1px solid var(--line);
+  border-radius: 7px;
 }
 
 .draft-item {
@@ -412,7 +463,6 @@ button:hover,
 .spell-results p,
 .spell-item span,
 .music-status,
-.music-playlists span,
 .music-queue span {
   color: var(--muted);
   font-size: 0.78rem;
@@ -432,7 +482,6 @@ button:hover,
 }
 
 .spell-item,
-.music-playlists button,
 .music-queue button {
   display: grid;
   gap: 5px;
@@ -455,23 +504,6 @@ button:hover,
   border-radius: 5px;
 }
 
-.music-settings {
-  display: grid;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 0.8rem;
-}
-
-.music-settings summary {
-  cursor: pointer;
-}
-
-.music-settings label {
-  display: grid;
-  gap: 5px;
-}
-
-.music-settings input,
 .music-add-form input {
   min-width: 0;
   height: 34px;
@@ -514,9 +546,7 @@ body.song-loaded #youtubePlayer {
 }
 
 .music-queue strong,
-.music-playlists strong,
-.music-queue span,
-.music-playlists span {
+.music-queue span {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -661,9 +691,22 @@ body.song-loaded #youtubePlayer {
   padding: 0;
 }
 
+.topbar button.active {
+  border-color: color-mix(in srgb, var(--accent), transparent 46%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent), transparent 70%);
+}
+
 .topbar .topbar-command {
   min-width: 62px;
   padding: 0 10px;
+}
+
+.topbar #hangingIndentButton {
+  min-width: 50px;
+}
+
+.topbar #doubleSpacingButton {
+  min-width: 42px;
 }
 
 .topbar select {
@@ -733,7 +776,16 @@ body.song-loaded #youtubePlayer {
 }
 
 .editor h1,
-.editor h2,
+.editor h2 {
+  margin: 0 0 0.65em;
+  font: inherit;
+  font-weight: 700;
+}
+
+.editor h2 {
+  font-weight: 650;
+}
+
 .editor p,
 .editor blockquote,
 .editor ul,
@@ -744,8 +796,20 @@ body.song-loaded #youtubePlayer {
 .editor blockquote {
   margin-left: 0;
   padding-left: 20px;
+  font: inherit;
   color: color-mix(in srgb, var(--editor-text), transparent 18%);
   border-left: 4px solid var(--accent);
+}
+
+.editor .hanging-indent,
+.editor.hanging-indent {
+  padding-left: 2.15em;
+  text-indent: -1.15em;
+}
+
+.editor .double-spaced,
+.editor.double-spaced {
+  line-height: 2;
 }
 
 .music-player {
