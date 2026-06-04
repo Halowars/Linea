@@ -1,0 +1,21 @@
+#fontSizeSelect {
+  width: 74px;
+  min-width: 74px;
+  height: 34px;
+  padding: 0 8px;
+  color: var(--button-text);
+  background: color-mix(in srgb, var(--button-bg), transparent 8%);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+#fontSizeSelect::placeholder {
+  color: var(--muted);
+}
+
+#fontSizeSelect:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent), transparent 42%);
+  outline-offset: 1px;
+}
