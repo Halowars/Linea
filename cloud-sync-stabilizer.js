@@ -4,6 +4,7 @@
   const accountForm = document.querySelector("#accountForm");
   const accountEmail = document.querySelector("#accountEmail");
   const accountPassword = document.querySelector("#accountPassword");
+  const accountLoginButton = document.querySelector("#accountLoginButton");
   const accountCreateButton = document.querySelector("#accountCreateButton");
   const accountLogoutButton = document.querySelector("#accountLogoutButton");
   const syncNowButton = document.querySelector("#syncNowButton");
@@ -12,16 +13,18 @@
   const accountName = document.querySelector("#accountName");
   const accountStatus = document.querySelector("#accountStatus");
   const editor = document.querySelector("#editor");
+  const draftList = document.querySelector("#draftList");
 
-  if (!accountStatus || !window.LINEA_FIREBASE_CONFIG?.apiKey) return;
+  const config = window.LINEA_FIREBASE_CONFIG_PRIVATE || window.LINEA_FIREBASE_CONFIG;
+  if (!accountStatus || !config?.apiKey) return;
 
   let services = null;
   let currentUser = null;
   let unsubscribe = null;
   let applyingRemote = false;
-  let connected = false;
   let pushTimer = 0;
   let lastCloudHash = "";
+  let started = false;
 
   function setStatus(message, error = false) {
     accountStatus.textContent = message;
@@ -29,15 +32,22 @@
   }
 
   function setOnlineState(isOnline) {
-    connected = isOnline;
     document.querySelector(".account-card")?.classList.toggle("sync-online", isOnline);
     document.querySelector(".account-card")?.classList.toggle("sync-error", !isOnline);
   }
 
+  function setSignedInUI(user) {
+    if (accountState) accountState.textContent = user ? "Synced" : "Local only";
+    if (accountForm) accountForm.hidden = Boolean(user);
+    if (accountSignedIn) accountSignedIn.hidden = !user;
+    if (accountName) accountName.textContent = user?.email || "";
+    [accountEmail, accountPassword, accountLoginButton, accountCreateButton, accountLogoutButton, syncNowButton].forEach((el) => {
+      if (el) el.disabled = false;
+    });
+  }
+
   function code(error) {
-    const label = error?.code || error?.name || "unknown-error";
-    const message = error?.message ? ` - ${String(error.message).slice(0, 160)}` : "";
-    return `${label}${message}`;
+    return error?.code || error?.name || error?.message || "unknown-error";
   }
 
   function cleanHtml(html) {
@@ -47,12 +57,19 @@
     return box.innerHTML || "<p></p>";
   }
 
+  function titleFromHtml(html, fallback = "Untitled story") {
+    const box = document.createElement("div");
+    box.innerHTML = cleanHtml(html);
+    return box.innerText.trim().split(/\n/).find(Boolean)?.slice(0, 120) || fallback;
+  }
+
   function normalizeDraft(draft) {
     if (!draft?.id) return null;
+    const html = cleanHtml(draft.html || "<p></p>");
     return {
       id: String(draft.id),
-      title: String(draft.title || "Untitled story").slice(0, 120),
-      html: cleanHtml(draft.html || "<p></p>"),
+      title: String(draft.title || titleFromHtml(html)).slice(0, 120),
+      html,
       updatedAt: Number(draft.updatedAt || Date.now()),
     };
   }
@@ -61,18 +78,12 @@
     const drafts = Array.isArray(payload?.drafts)
       ? payload.drafts.map(normalizeDraft).filter(Boolean)
       : [];
-
     drafts.sort((a, b) => b.updatedAt - a.updatedAt);
     const capped = drafts.slice(0, 200);
     const activeDraftId = capped.some((draft) => draft.id === payload?.activeDraftId)
       ? String(payload.activeDraftId)
       : capped[0]?.id || "";
-
-    return {
-      activeDraftId,
-      drafts: capped,
-      updatedAt: Date.now(),
-    };
+    return { activeDraftId, drafts };
   }
 
   function readRawState() {
@@ -83,19 +94,39 @@
     }
   }
 
-  function localStatePayload() {
-    try {
-      if (typeof syncEditorToDraft === "function") syncEditorToDraft();
-      if (typeof cloudPayload === "function") return normalizePayload(cloudPayload(false));
-    } catch {}
-
+  function writeRawDrafts(payload) {
+    const normalized = normalizePayload(payload);
     const raw = readRawState();
-    return normalizePayload({ activeDraftId: raw.activeDraftId, drafts: raw.drafts || [] });
+    raw.activeDraftId = normalized.activeDraftId;
+    raw.drafts = normalized.drafts;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(raw));
+  }
+
+  function currentEditorDraft(raw) {
+    const activeId = raw.activeDraftId;
+    const active = Array.isArray(raw.drafts) ? raw.drafts.find((draft) => draft.id === activeId) : null;
+    if (!active || !editor) return null;
+    const html = cleanHtml(editor.innerHTML || active.html || "<p></p>");
+    return {
+      ...active,
+      title: titleFromHtml(html, active.title),
+      html,
+      updatedAt: Date.now(),
+    };
+  }
+
+  function localStatePayload() {
+    const raw = readRawState();
+    let drafts = Array.isArray(raw.drafts) ? raw.drafts.slice() : [];
+    const live = currentEditorDraft(raw);
+    if (live) drafts = drafts.map((draft) => (draft.id === live.id ? live : draft));
+    return normalizePayload({ activeDraftId: raw.activeDraftId, drafts });
   }
 
   function isBlankStarter(payload) {
-    if (!payload?.drafts || payload.drafts.length !== 1) return false;
-    const draft = payload.drafts[0];
+    const normalized = normalizePayload(payload);
+    if (normalized.drafts.length !== 1) return false;
+    const draft = normalized.drafts[0];
     const box = document.createElement("div");
     box.innerHTML = draft.html || "";
     return draft.title === "Untitled story" && !box.innerText.trim();
@@ -105,12 +136,10 @@
     const local = normalizePayload(localPayload);
     const cloud = normalizePayload(cloudPayloadValue);
     const draftsById = new Map();
-
     [...cloud.drafts, ...local.drafts].forEach((draft) => {
       const previous = draftsById.get(draft.id);
       if (!previous || draft.updatedAt >= previous.updatedAt) draftsById.set(draft.id, draft);
     });
-
     const drafts = [...draftsById.values()].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 200);
     const localActiveExists = drafts.some((draft) => draft.id === local.activeDraftId);
     const cloudActiveExists = drafts.some((draft) => draft.id === cloud.activeDraftId);
@@ -119,7 +148,6 @@
       : cloudActiveExists
         ? cloud.activeDraftId
         : drafts[0]?.id || "";
-
     return normalizePayload({ activeDraftId, drafts });
   }
 
@@ -135,17 +163,24 @@
   function applyPayload(payload) {
     const normalized = normalizePayload(payload);
     if (!normalized.drafts.length) return false;
-
-    const local = localStatePayload();
-    if (payloadHash(local) === payloadHash(normalized)) return false;
+    const localHash = payloadHash(localStatePayload());
+    const incomingHash = payloadHash(normalized);
+    if (localHash === incomingHash) return false;
 
     applyingRemote = true;
-    const raw = readRawState();
-    raw.activeDraftId = normalized.activeDraftId;
-    raw.drafts = normalized.drafts;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(raw));
-    setStatus("Drafts synced. Reloading...");
-    window.setTimeout(() => location.reload(), 150);
+    writeRawDrafts(normalized);
+    if (typeof applyDraftPayload === "function") {
+      try {
+        applyDraftPayload(normalized);
+      } catch {
+        location.reload();
+      }
+    } else {
+      location.reload();
+    }
+    window.setTimeout(() => {
+      applyingRemote = false;
+    }, 250);
     return true;
   }
 
@@ -156,13 +191,9 @@
       import(`https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-auth.js`),
       import(`https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-firestore.js`),
     ]);
-
-    const app = appMod.getApps().length
-      ? appMod.getApp()
-      : appMod.initializeApp(window.LINEA_FIREBASE_CONFIG);
+    const app = appMod.getApps().length ? appMod.getApp() : appMod.initializeApp(config);
     const auth = authMod.getAuth(app);
     await authMod.setPersistence(auth, authMod.browserLocalPersistence);
-
     services = {
       auth,
       db: dbMod.getFirestore(app),
@@ -176,7 +207,6 @@
       onSnapshot: dbMod.onSnapshot,
       serverTimestamp: dbMod.serverTimestamp,
     };
-
     return services;
   }
 
@@ -188,15 +218,7 @@
     if (!currentUser || !services || applyingRemote) return;
     const normalized = normalizePayload(payload);
     const size = payloadSize(normalized);
-
-    if (size > 900_000) {
-      throw Object.assign(new Error("Cloud draft document is too large"), { code: "linea/document-too-large" });
-    }
-
-    if (normalized.drafts.length > 200) {
-      throw Object.assign(new Error("Too many drafts"), { code: "linea/too-many-drafts" });
-    }
-
+    if (size > 900_000) throw Object.assign(new Error("Cloud draft document is too large"), { code: "linea/document-too-large" });
     await services.setDoc(cloudRef(), {
       activeDraftId: normalized.activeDraftId,
       drafts: normalized.drafts,
@@ -209,15 +231,14 @@
     if (!currentUser || !services) return;
     try {
       if (label) setStatus("Syncing drafts...");
-      const ref = cloudRef();
-      const snap = await services.getDoc(ref);
+      const snap = await services.getDoc(cloudRef());
       const local = localStatePayload();
       const cloud = snap.exists() ? snap.data() : { drafts: [] };
       const merged = mergePayloads(local, cloud);
+      const changedLocal = applyPayload(merged);
       await writeCloud(merged);
-      const reloading = applyPayload(merged);
       setOnlineState(true);
-      if (!reloading) setStatus("Drafts synced.");
+      if (!changedLocal) setStatus("Drafts synced.");
     } catch (error) {
       setOnlineState(false);
       setStatus(`Could not sync drafts: ${code(error)}`, true);
@@ -229,12 +250,11 @@
     currentUser = user;
     if (unsubscribe) unsubscribe();
     unsubscribe = null;
-
     if (!user) {
       setOnlineState(false);
+      setStatus("Log in only if you want drafts across devices.");
       return;
     }
-
     try {
       await loadServices();
       await syncNow(false);
@@ -245,17 +265,13 @@
           if (!snapshot.exists() || snapshot.metadata.hasPendingWrites || applyingRemote) return;
           try {
             const local = localStatePayload();
-            const merged = mergePayloads(local, snapshot.data());
+            const remote = snapshot.data();
+            const merged = mergePayloads(local, remote);
             const mergedHash = payloadHash(merged);
-            const remoteHash = payloadHash(snapshot.data());
-            const localHash = payloadHash(local);
-
-            if (mergedHash !== remoteHash) await writeCloud(merged);
-            const reloading = mergedHash !== localHash ? applyPayload(merged) : false;
-
-            lastCloudHash = mergedHash;
+            if (mergedHash !== payloadHash(remote)) await writeCloud(merged);
+            const changedLocal = mergedHash !== payloadHash(local) ? applyPayload(merged) : false;
             setOnlineState(true);
-            if (!reloading) setStatus("Drafts synced.");
+            if (!changedLocal) setStatus("Drafts synced.");
           } catch (error) {
             setOnlineState(false);
             setStatus(`Cloud sync issue: ${code(error)}`, true);
@@ -277,15 +293,7 @@
   function schedulePush() {
     if (!currentUser || applyingRemote) return;
     clearTimeout(pushTimer);
-    pushTimer = window.setTimeout(async () => {
-      try {
-        const local = localStatePayload();
-        const hash = payloadHash(local);
-        if (hash === lastCloudHash) return;
-        setStatus("Syncing drafts...");
-        await syncNow(false);
-      } catch {}
-    }, 1200);
+    pushTimer = window.setTimeout(() => syncNow(false).catch(() => {}), 900);
   }
 
   async function login(createAccount = false) {
@@ -312,13 +320,11 @@
     event.stopImmediatePropagation();
     login(false);
   }, true);
-
   accountCreateButton?.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopImmediatePropagation();
     login(true);
   }, true);
-
   accountLogoutButton?.addEventListener("click", async (event) => {
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -329,7 +335,6 @@
       setStatus(`Could not log out: ${code(error)}`, true);
     }
   }, true);
-
   syncNowButton?.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -337,27 +342,22 @@
   }, true);
 
   editor?.addEventListener("input", schedulePush);
-  document.querySelector("#draftList")?.addEventListener("click", () => window.setTimeout(schedulePush, 0));
+  draftList?.addEventListener("click", () => window.setTimeout(schedulePush, 0));
   document.querySelector("#newDraftButton")?.addEventListener("click", () => window.setTimeout(schedulePush, 0));
   window.addEventListener("beforeunload", () => {
     if (currentUser && services) writeCloud(localStatePayload()).catch(() => {});
   });
 
-  new MutationObserver(() => {
-    if (connected && /could not start cloud sync|cloud sync lost connection/i.test(accountStatus.textContent || "")) {
-      setStatus("Drafts synced.");
-      setOnlineState(true);
-    }
-  }).observe(accountStatus, { childList: true, characterData: true, subtree: true });
+  [accountEmail, accountPassword, accountLoginButton, accountCreateButton].forEach((el) => {
+    if (el) el.disabled = false;
+  });
+  setStatus("Log in only if you want drafts across devices.");
 
   loadServices()
     .then((s) => {
       s.onAuth(s.auth, (user) => {
         currentUser = user;
-        if (accountState) accountState.textContent = user ? "Synced" : "Local only";
-        if (accountForm) accountForm.hidden = Boolean(user);
-        if (accountSignedIn) accountSignedIn.hidden = !user;
-        if (accountName) accountName.textContent = user?.email || "";
+        setSignedInUI(user);
         if (!user) {
           if (unsubscribe) unsubscribe();
           unsubscribe = null;
@@ -365,7 +365,12 @@
           setStatus("Log in only if you want drafts across devices.");
           return;
         }
-        startSync(user);
+        if (!started) {
+          started = true;
+          startSync(user);
+        } else {
+          startSync(user);
+        }
       });
     })
     .catch((error) => setStatus(`Firebase setup failed: ${code(error)}`, true));
