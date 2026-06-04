@@ -1,0 +1,42 @@
+.background-layout-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.45);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.background-layout-card strong {
+  color: var(--text);
+  font-size: 0.84rem;
+}
+
+.background-layout-card label {
+  gap: 5px;
+}
+
+.background-layout-card select,
+.background-layout-card input[type="range"] {
+  width: 100%;
+}
+
+.background-layout-help {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.background-layer.tile-background,
+.preview-bg.tile-background {
+  background-repeat: repeat !important;
+  background-position: top left !important;
+}
+
+.background-layer.cover-background,
+.preview-bg.cover-background {
+  background-repeat: no-repeat !important;
+  background-position: center !important;
+  background-size: cover !important;
+}
