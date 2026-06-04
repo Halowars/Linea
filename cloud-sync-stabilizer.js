@@ -35,7 +35,9 @@
   }
 
   function code(error) {
-    return error?.code || error?.name || "unknown-error";
+    const label = error?.code || error?.name || "unknown-error";
+    const message = error?.message ? ` - ${String(error.message).slice(0, 160)}` : "";
+    return `${label}${message}`;
   }
 
   function cleanHtml(html) {
@@ -73,18 +75,22 @@
     };
   }
 
+  function readRawState() {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+    } catch {
+      return {};
+    }
+  }
+
   function localStatePayload() {
     try {
       if (typeof syncEditorToDraft === "function") syncEditorToDraft();
       if (typeof cloudPayload === "function") return normalizePayload(cloudPayload(false));
     } catch {}
 
-    try {
-      const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-      return normalizePayload({ activeDraftId: raw.activeDraftId, drafts: raw.drafts || [] });
-    } catch {
-      return normalizePayload({ drafts: [] });
-    }
+    const raw = readRawState();
+    return normalizePayload({ activeDraftId: raw.activeDraftId, drafts: raw.drafts || [] });
   }
 
   function isBlankStarter(payload) {
@@ -128,23 +134,19 @@
 
   function applyPayload(payload) {
     const normalized = normalizePayload(payload);
-    if (!normalized.drafts.length) return;
+    if (!normalized.drafts.length) return false;
+
+    const local = localStatePayload();
+    if (payloadHash(local) === payloadHash(normalized)) return false;
+
     applyingRemote = true;
-    try {
-      if (typeof applyDraftPayload === "function") {
-        applyDraftPayload(normalized);
-      } else {
-        const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-        raw.activeDraftId = normalized.activeDraftId;
-        raw.drafts = normalized.drafts;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(raw));
-        location.reload();
-      }
-    } finally {
-      window.setTimeout(() => {
-        applyingRemote = false;
-      }, 0);
-    }
+    const raw = readRawState();
+    raw.activeDraftId = normalized.activeDraftId;
+    raw.drafts = normalized.drafts;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(raw));
+    setStatus("Drafts synced. Reloading...");
+    window.setTimeout(() => location.reload(), 150);
+    return true;
   }
 
   async function loadServices() {
@@ -212,10 +214,10 @@
       const local = localStatePayload();
       const cloud = snap.exists() ? snap.data() : { drafts: [] };
       const merged = mergePayloads(local, cloud);
-      applyPayload(merged);
       await writeCloud(merged);
+      const reloading = applyPayload(merged);
       setOnlineState(true);
-      setStatus("Drafts synced.");
+      if (!reloading) setStatus("Drafts synced.");
     } catch (error) {
       setOnlineState(false);
       setStatus(`Could not sync drafts: ${code(error)}`, true);
@@ -248,12 +250,12 @@
             const remoteHash = payloadHash(snapshot.data());
             const localHash = payloadHash(local);
 
-            if (mergedHash !== localHash) applyPayload(merged);
             if (mergedHash !== remoteHash) await writeCloud(merged);
+            const reloading = mergedHash !== localHash ? applyPayload(merged) : false;
 
             lastCloudHash = mergedHash;
             setOnlineState(true);
-            setStatus("Drafts synced.");
+            if (!reloading) setStatus("Drafts synced.");
           } catch (error) {
             setOnlineState(false);
             setStatus(`Cloud sync issue: ${code(error)}`, true);
