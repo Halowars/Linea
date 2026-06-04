@@ -1,0 +1,21 @@
+.custom-font-size-input {
+  width: 58px;
+  height: 34px;
+  min-width: 58px;
+  padding: 0 7px;
+  color: var(--button-text);
+  background: color-mix(in srgb, var(--button-bg), transparent 8%);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+.custom-font-size-input::placeholder {
+  color: var(--muted);
+}
+
+.custom-font-size-input:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent), transparent 42%);
+  outline-offset: 1px;
+}
