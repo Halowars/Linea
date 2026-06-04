@@ -7,6 +7,7 @@
 
   const originalSetTimeout = window.setTimeout;
   let preferredMode = blockFormat?.value || "p";
+  let manualModeChange = false;
 
   window.setTimeout = function patchedSetTimeout(callback, delay, ...args) {
     const name = callback?.name || "";
@@ -63,6 +64,27 @@
     if (from.classList.contains("hanging-indent")) to.classList.add("hanging-indent");
   }
 
+  function replaceTag(block, tag) {
+    if (!block || block.tagName.toLowerCase() === tag) return block;
+    const next = document.createElement(tag);
+    next.innerHTML = block.innerHTML || "<br>";
+    next.className = block.className;
+    block.replaceWith(next);
+    return next;
+  }
+
+  function applyPreferredModeToCurrentBlock() {
+    const tag = blockTagForMode();
+    const block = currentBlock();
+    if (!block || block.tagName === "LI") return;
+    const next = replaceTag(block, tag);
+    if (next) {
+      next.style.fontSize = "";
+      placeCaretEnd(next);
+      saveThroughApp();
+    }
+  }
+
   function insertNextBlock(block) {
     const tag = blockTagForMode();
     const next = document.createElement(tag);
@@ -74,18 +96,53 @@
     saveThroughApp();
   }
 
+  function setMode(mode) {
+    preferredMode = mode;
+    if (blockFormat) blockFormat.value = mode;
+    applyPreferredModeToCurrentBlock();
+  }
+
+  function handleShortcut(event) {
+    if (!event.altKey || event.ctrlKey || event.metaKey) return false;
+    const key = event.key.toLowerCase();
+    const shortcuts = { p: "p", t: "h1", h: "h2", q: "blockquote" };
+    if (!shortcuts[key]) return false;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    setMode(shortcuts[key]);
+    editor.focus();
+    return true;
+  }
+
   editor.addEventListener(
     "keydown",
     (event) => {
+      if (handleShortcut(event)) return;
+
       if (event.key !== "Enter" || event.shiftKey || !selectionInsideEditor()) return;
       const block = currentBlock();
       if (!block) return;
 
-      if (["H1", "H2", "BLOCKQUOTE"].includes(block.tagName) || blockTagForMode() !== "p") {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        insertNextBlock(block);
-      }
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      insertNextBlock(block);
+    },
+    true
+  );
+
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if (!document.activeElement || document.activeElement === editor || editor.contains(document.activeElement)) return;
+      handleShortcut(event);
+    },
+    true
+  );
+
+  blockFormat?.addEventListener(
+    "mousedown",
+    () => {
+      manualModeChange = true;
     },
     true
   );
@@ -93,7 +150,8 @@
   blockFormat?.addEventListener(
     "change",
     () => {
-      preferredMode = blockFormat.value || "p";
+      if (manualModeChange) preferredMode = blockFormat.value || "p";
+      manualModeChange = false;
       const requested = preferredMode;
       originalSetTimeout(() => {
         if (!["h1", "h2", "blockquote", "p"].includes(requested)) return;
@@ -113,11 +171,16 @@
     true
   );
 
+  editor.addEventListener("keyup", () => {
+    if (blockFormat) blockFormat.value = preferredMode;
+  });
+
   editor.addEventListener("mouseup", () => {
-    if (!blockFormat) return;
-    const block = currentBlock();
-    const tag = block?.tagName?.toLowerCase();
-    if (["p", "h1", "h2", "blockquote"].includes(tag)) blockFormat.value = preferredMode;
+    if (blockFormat) blockFormat.value = preferredMode;
+  });
+
+  document.addEventListener("selectionchange", () => {
+    if (selectionInsideEditor() && blockFormat) blockFormat.value = preferredMode;
   });
 
   if (fontSizeInput) {
