@@ -7,14 +7,11 @@
 
   const originalSetTimeout = window.setTimeout;
   let preferredMode = blockFormat?.value || "p";
-  let manualModeChange = false;
 
   window.setTimeout = function patchedSetTimeout(callback, delay, ...args) {
     const name = callback?.name || "";
     const source = typeof callback === "function" ? Function.prototype.toString.call(callback) : "";
-    if (name === "runSpellCheck" || source.includes("stripSpell()") || source.includes("renderSpell(matches)")) {
-      return 0;
-    }
+    if (name === "runSpellCheck" || source.includes("stripSpell()") || source.includes("renderSpell(matches)")) return 0;
     return originalSetTimeout.call(window, callback, delay, ...args);
   };
 
@@ -41,6 +38,10 @@
     return null;
   }
 
+  function normalizedMode(mode) {
+    return { paragraph: "p", title: "h1", heading: "h2", quote: "blockquote" }[mode] || mode;
+  }
+
   function blockTagForMode() {
     return ["p", "h1", "h2", "blockquote"].includes(preferredMode) ? preferredMode : "p";
   }
@@ -56,32 +57,36 @@
   }
 
   function saveThroughApp() {
-    editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertParagraph" }));
+    editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "formatBlock" }));
   }
 
   function copyWritingHelpers(from, to) {
     if (from.classList.contains("double-space")) to.classList.add("double-space");
+    if (from.classList.contains("double-spaced")) to.classList.add("double-spaced");
     if (from.classList.contains("hanging-indent")) to.classList.add("hanging-indent");
   }
 
-  function replaceTag(block, tag) {
+  function replaceTag(block, tag, keepCaret = true) {
     if (!block || block.tagName.toLowerCase() === tag) return block;
     const next = document.createElement(tag);
     next.innerHTML = block.innerHTML || "<br>";
     next.className = block.className;
     block.replaceWith(next);
+    if (keepCaret) placeCaretEnd(next);
     return next;
   }
 
-  function applyPreferredModeToCurrentBlock() {
-    const tag = blockTagForMode();
-    const block = currentBlock();
-    if (!block || block.tagName === "LI") return;
-    const next = replaceTag(block, tag);
-    if (next) {
-      next.style.fontSize = "";
-      placeCaretEnd(next);
-      saveThroughApp();
+  function setMode(mode, applyToCurrent = true) {
+    preferredMode = normalizedMode(mode) || "p";
+    if (blockFormat) blockFormat.value = preferredMode;
+
+    if (applyToCurrent && selectionInsideEditor()) {
+      const block = currentBlock();
+      if (block && block.tagName !== "LI") {
+        const next = replaceTag(block, blockTagForMode(), true);
+        if (next) next.style.fontSize = "";
+        saveThroughApp();
+      }
     }
   }
 
@@ -96,25 +101,23 @@
     saveThroughApp();
   }
 
-  function setMode(mode) {
-    preferredMode = mode;
-    if (blockFormat) blockFormat.value = mode;
-    applyPreferredModeToCurrentBlock();
+  function shortcutMode(event) {
+    if ((!event.altKey && !(event.ctrlKey && event.shiftKey)) || event.metaKey) return "";
+    const key = event.key.toLowerCase();
+    return { p: "p", t: "h1", h: "h2", q: "blockquote" }[key] || "";
   }
 
   function handleShortcut(event) {
-    if (!event.altKey || event.ctrlKey || event.metaKey) return false;
-    const key = event.key.toLowerCase();
-    const shortcuts = { p: "p", t: "h1", h: "h2", q: "blockquote" };
-    if (!shortcuts[key]) return false;
+    const mode = shortcutMode(event);
+    if (!mode) return false;
     event.preventDefault();
     event.stopImmediatePropagation();
-    setMode(shortcuts[key]);
     editor.focus();
+    setMode(mode, true);
     return true;
   }
 
-  editor.addEventListener(
+  document.addEventListener(
     "keydown",
     (event) => {
       if (handleShortcut(event)) return;
@@ -130,19 +133,18 @@
     true
   );
 
-  document.addEventListener(
-    "keydown",
-    (event) => {
-      if (!document.activeElement || document.activeElement === editor || editor.contains(document.activeElement)) return;
-      handleShortcut(event);
+  blockFormat?.addEventListener(
+    "pointerdown",
+    () => {
+      blockFormat.dataset.userChangingMode = "true";
     },
     true
   );
 
   blockFormat?.addEventListener(
-    "mousedown",
+    "keydown",
     () => {
-      manualModeChange = true;
+      blockFormat.dataset.userChangingMode = "true";
     },
     true
   );
@@ -150,47 +152,34 @@
   blockFormat?.addEventListener(
     "change",
     () => {
-      if (manualModeChange) preferredMode = blockFormat.value || "p";
-      manualModeChange = false;
-      const requested = preferredMode;
-      originalSetTimeout(() => {
-        if (!["h1", "h2", "blockquote", "p"].includes(requested)) return;
-        const selection = getSelection();
-        if (!selection?.rangeCount || !editor.contains(selection.anchorNode)) return;
-        const range = selection.getRangeAt(0);
-        const blocks = Array.from(editor.children).filter((node) => {
-          return ["P", "H1", "H2", "BLOCKQUOTE", "DIV"].includes(node.tagName) && range.intersectsNode(node);
-        });
-        const targets = blocks.length ? blocks : [currentBlock()].filter(Boolean);
-        targets.forEach((block) => {
-          if (["H1", "H2", "BLOCKQUOTE", "P"].includes(block.tagName)) block.style.fontSize = "";
-        });
-        saveThroughApp();
-      }, 0);
+      if (blockFormat.dataset.userChangingMode === "true") {
+        setMode(blockFormat.value || "p", true);
+      } else {
+        blockFormat.value = preferredMode;
+      }
+      delete blockFormat.dataset.userChangingMode;
     },
     true
   );
 
-  editor.addEventListener("keyup", () => {
-    if (blockFormat) blockFormat.value = preferredMode;
-  });
+  function keepDropdownHonest() {
+    if (blockFormat && blockFormat.value !== preferredMode) blockFormat.value = preferredMode;
+  }
 
-  editor.addEventListener("mouseup", () => {
-    if (blockFormat) blockFormat.value = preferredMode;
-  });
-
+  editor.addEventListener("keyup", keepDropdownHonest);
+  editor.addEventListener("mouseup", keepDropdownHonest);
   document.addEventListener("selectionchange", () => {
-    if (selectionInsideEditor() && blockFormat) blockFormat.value = preferredMode;
+    if (selectionInsideEditor()) keepDropdownHonest();
   });
 
   if (fontSizeInput) {
     fontSizeInput.addEventListener("change", () => {
       const numeric = Number(fontSizeInput.value);
       if (!Number.isFinite(numeric)) return;
-      const clamped = Math.max(8, Math.min(120, Math.round(numeric)));
-      fontSizeInput.value = String(clamped);
+      fontSizeInput.value = String(Math.max(8, Math.min(120, Math.round(numeric))));
     });
   }
 
   removeSpellUi();
+  keepDropdownHonest();
 })();
