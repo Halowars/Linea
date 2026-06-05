@@ -1,6 +1,9 @@
 (() => {
   const FIREBASE_SDK_VERSION = "10.12.5";
   const STORAGE_KEY = "linea-state-v1";
+  const TOMBSTONE_PREFIX = "__deleted__::";
+  const TOMBSTONE_TTL = 1000 * 60 * 60 * 24 * 30;
+
   const accountForm = document.querySelector("#accountForm");
   const accountEmail = document.querySelector("#accountEmail");
   const accountPassword = document.querySelector("#accountPassword");
@@ -24,6 +27,7 @@
   let pushTimer = 0;
   let lastCloudHash = "";
   let initialSyncComplete = false;
+  let storageHookInstalled = false;
 
   function setStatus(message, error = false) {
     accountStatus.textContent = message;
@@ -49,6 +53,14 @@
     return error?.code || error?.name || error?.message || "unknown-error";
   }
 
+  function readRawState() {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+    } catch {
+      return {};
+    }
+  }
+
   function cleanHtml(html) {
     const box = document.createElement("div");
     box.innerHTML = String(html || "<p></p>");
@@ -62,8 +74,56 @@
     return box.innerText.trim().split(/\n/).find(Boolean)?.slice(0, 120) || fallback;
   }
 
+  function isTombstone(draft) {
+    return Boolean(draft?.deletedDraftId || draft?.tombstone || String(draft?.id || "").startsWith(TOMBSTONE_PREFIX));
+  }
+
+  function tombstoneTargetId(draft) {
+    if (!isTombstone(draft)) return "";
+    return String(draft.deletedDraftId || String(draft.id || "").replace(TOMBSTONE_PREFIX, ""));
+  }
+
+  function tombstoneDraft(id, deletedAt = Date.now()) {
+    return {
+      id: `${TOMBSTONE_PREFIX}${id}`,
+      title: "Deleted draft",
+      html: "<p></p>",
+      updatedAt: Number(deletedAt || Date.now()),
+      deletedDraftId: String(id),
+      deletedAt: Number(deletedAt || Date.now()),
+      tombstone: true,
+    };
+  }
+
+  function liveIdsFromRaw(raw) {
+    return new Set(Array.isArray(raw?.drafts) ? raw.drafts.filter((d) => !isTombstone(d)).map((d) => String(d.id)) : []);
+  }
+
+  function deletedMapFrom(input) {
+    const now = Date.now();
+    const map = new Map();
+    const add = (id, at = now) => {
+      if (!id) return;
+      const deletedAt = Number(at || now);
+      if (now - deletedAt > TOMBSTONE_TTL) return;
+      const previous = map.get(String(id));
+      if (!previous || deletedAt > previous) map.set(String(id), deletedAt);
+    };
+
+    if (Array.isArray(input?.deletedDraftIds)) input.deletedDraftIds.forEach((id) => add(id));
+    if (input?.deletedDrafts && typeof input.deletedDrafts === "object") {
+      Object.entries(input.deletedDrafts).forEach(([id, at]) => add(id, at));
+    }
+    if (Array.isArray(input?.drafts)) {
+      input.drafts.forEach((draft) => {
+        if (isTombstone(draft)) add(tombstoneTargetId(draft), draft.deletedAt || draft.updatedAt);
+      });
+    }
+    return map;
+  }
+
   function normalizeDraft(draft) {
-    if (!draft?.id) return null;
+    if (!draft?.id || isTombstone(draft)) return null;
     const html = cleanHtml(draft.html || "<p></p>");
     return {
       id: String(draft.id),
@@ -74,23 +134,26 @@
   }
 
   function normalizePayload(payload) {
+    const deleted = deletedMapFrom(payload);
     const drafts = Array.isArray(payload?.drafts)
-      ? payload.drafts.map(normalizeDraft).filter(Boolean)
+      ? payload.drafts.map(normalizeDraft).filter(Boolean).filter((draft) => !deleted.has(draft.id))
       : [];
     drafts.sort((a, b) => b.updatedAt - a.updatedAt);
     const capped = drafts.slice(0, 200);
     const activeDraftId = capped.some((draft) => draft.id === payload?.activeDraftId)
       ? String(payload.activeDraftId)
       : capped[0]?.id || "";
-    return { activeDraftId, drafts: capped };
+    return { activeDraftId, drafts: capped, deletedDrafts: Object.fromEntries(deleted) };
   }
 
-  function readRawState() {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-    } catch {
-      return {};
-    }
+  function withCloudTombstones(payload) {
+    const normalized = normalizePayload(payload);
+    const tombstones = Object.entries(normalized.deletedDrafts || {}).map(([id, deletedAt]) => tombstoneDraft(id, deletedAt));
+    return {
+      activeDraftId: normalized.activeDraftId,
+      drafts: [...normalized.drafts, ...tombstones].slice(0, 240),
+      deletedDrafts: normalized.deletedDrafts || {},
+    };
   }
 
   function writeRawDrafts(payload) {
@@ -98,87 +161,70 @@
     const raw = readRawState();
     raw.activeDraftId = normalized.activeDraftId;
     raw.drafts = normalized.drafts;
+    raw.deletedDrafts = normalized.deletedDrafts || {};
     localStorage.setItem(STORAGE_KEY, JSON.stringify(raw));
   }
 
   function currentEditorDraft(raw) {
     const activeId = raw.activeDraftId;
     const active = Array.isArray(raw.drafts) ? raw.drafts.find((draft) => draft.id === activeId) : null;
-    if (!active || !editor) return null;
+    const deleted = deletedMapFrom(raw);
+    if (!active || deleted.has(String(active.id)) || !editor) return null;
 
     const html = cleanHtml(editor.innerHTML || active.html || "<p></p>");
     const title = titleFromHtml(html, active.title);
     const sameHtml = html === cleanHtml(active.html || "<p></p>");
     const sameTitle = title === String(active.title || "Untitled story").slice(0, 120);
-
-    return {
-      ...active,
-      title,
-      html,
-      updatedAt: sameHtml && sameTitle ? Number(active.updatedAt || Date.now()) : Date.now(),
-    };
+    return { ...active, title, html, updatedAt: sameHtml && sameTitle ? Number(active.updatedAt || Date.now()) : Date.now() };
   }
 
   function localStatePayload() {
     const raw = readRawState();
-    let drafts = Array.isArray(raw.drafts) ? raw.drafts.slice() : [];
+    const deleted = deletedMapFrom(raw);
+    let drafts = Array.isArray(raw.drafts) ? raw.drafts.filter((draft) => !isTombstone(draft) && !deleted.has(String(draft.id))) : [];
     const live = currentEditorDraft(raw);
     if (live) drafts = drafts.map((draft) => (draft.id === live.id ? live : draft));
-    return normalizePayload({ activeDraftId: raw.activeDraftId, drafts });
-  }
-
-  function isBlankStarter(payload) {
-    const normalized = normalizePayload(payload);
-    if (normalized.drafts.length !== 1) return false;
-    const draft = normalized.drafts[0];
-    const box = document.createElement("div");
-    box.innerHTML = draft.html || "";
-    return draft.title === "Untitled story" && !box.innerText.trim();
+    return normalizePayload({ activeDraftId: raw.activeDraftId, drafts, deletedDrafts: Object.fromEntries(deleted) });
   }
 
   function mergePayloads(localPayload, cloudPayloadValue) {
     const local = normalizePayload(localPayload);
     const cloud = normalizePayload(cloudPayloadValue);
+    const deleted = new Map([...Object.entries(cloud.deletedDrafts || {}), ...Object.entries(local.deletedDrafts || {})]);
     const draftsById = new Map();
     [...cloud.drafts, ...local.drafts].forEach((draft) => {
+      if (deleted.has(draft.id)) return;
       const previous = draftsById.get(draft.id);
       if (!previous || draft.updatedAt >= previous.updatedAt) draftsById.set(draft.id, draft);
     });
     const drafts = [...draftsById.values()].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 200);
-    const localActiveExists = drafts.some((draft) => draft.id === local.activeDraftId);
-    const cloudActiveExists = drafts.some((draft) => draft.id === cloud.activeDraftId);
-    const activeDraftId = !isBlankStarter(local) && localActiveExists
+    const activeDraftId = drafts.some((draft) => draft.id === local.activeDraftId)
       ? local.activeDraftId
-      : cloudActiveExists
+      : drafts.some((draft) => draft.id === cloud.activeDraftId)
         ? cloud.activeDraftId
         : drafts[0]?.id || "";
-    return normalizePayload({ activeDraftId, drafts });
+    return normalizePayload({ activeDraftId, drafts, deletedDrafts: Object.fromEntries(deleted) });
   }
 
   function payloadHash(payload) {
     const normalized = normalizePayload(payload);
     return JSON.stringify({
       activeDraftId: normalized.activeDraftId,
-      drafts: normalized.drafts.map((draft) => ({
-        id: draft.id,
-        title: draft.title,
-        html: draft.html,
-      })),
+      deletedDrafts: normalized.deletedDrafts || {},
+      drafts: normalized.drafts.map((draft) => ({ id: draft.id, title: draft.title, html: draft.html })),
     });
   }
 
   function payloadSize(payload) {
-    return new Blob([JSON.stringify(normalizePayload(payload))]).size;
+    return new Blob([JSON.stringify(withCloudTombstones(payload))]).size;
   }
 
   function applyPayload(payload) {
     const normalized = normalizePayload(payload);
-    if (!normalized.drafts.length) return false;
     if (payloadHash(localStatePayload()) === payloadHash(normalized)) return false;
-
     applyingRemote = true;
     writeRawDrafts(normalized);
-    if (typeof applyDraftPayload === "function") {
+    if (normalized.drafts.length && typeof applyDraftPayload === "function") {
       try {
         applyDraftPayload(normalized);
       } catch {
@@ -225,16 +271,15 @@
 
   async function writeCloud(payload = localStatePayload()) {
     if (!currentUser || !services || applyingRemote) return;
-    const normalized = normalizePayload(payload);
-    if (!normalized.drafts.length) return;
-    const size = payloadSize(normalized);
-    if (size > 900_000) throw Object.assign(new Error("Cloud draft document is too large"), { code: "linea/document-too-large" });
+    const cloudPayload = withCloudTombstones(payload);
+    if (!cloudPayload.drafts.length) return;
+    if (payloadSize(cloudPayload) > 900_000) throw Object.assign(new Error("Cloud draft document is too large"), { code: "linea/document-too-large" });
     await services.setDoc(cloudRef(), {
-      activeDraftId: normalized.activeDraftId,
-      drafts: normalized.drafts,
+      activeDraftId: cloudPayload.activeDraftId,
+      drafts: cloudPayload.drafts,
       updatedAt: services.serverTimestamp(),
     });
-    lastCloudHash = payloadHash(normalized);
+    lastCloudHash = payloadHash(cloudPayload);
   }
 
   async function syncNow(label = true, preferCloud = true) {
@@ -244,8 +289,9 @@
       const snap = await services.getDoc(cloudRef());
       const local = localStatePayload();
       const cloud = snap.exists() ? normalizePayload(snap.data()) : normalizePayload({ drafts: [] });
-      const next = preferCloud && cloud.drafts.length ? cloud : local;
-      const changedLocal = preferCloud && cloud.drafts.length ? applyPayload(next) : false;
+      const cloudHasState = cloud.drafts.length || Object.keys(cloud.deletedDrafts || {}).length;
+      const next = preferCloud && cloudHasState ? mergePayloads({ drafts: [], deletedDrafts: local.deletedDrafts }, cloud) : local;
+      const changedLocal = preferCloud && cloudHasState ? applyPayload(next) : false;
       await writeCloud(next);
       setOnlineState(true);
       if (!changedLocal) setStatus("Drafts synced.");
@@ -322,6 +368,36 @@
     }, delay);
   }
 
+  function installStorageHook() {
+    if (storageHookInstalled) return;
+    storageHookInstalled = true;
+    const originalSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function patchedSetItem(key, value) {
+      const before = key === STORAGE_KEY && this === localStorage ? readRawState() : null;
+      const beforeIds = before ? liveIdsFromRaw(before) : null;
+      const result = originalSetItem.apply(this, arguments);
+      if (key === STORAGE_KEY && this === localStorage && beforeIds && !applyingRemote) {
+        const after = readRawState();
+        const afterIds = liveIdsFromRaw(after);
+        const deleted = { ...(after.deletedDrafts || {}) };
+        let changed = false;
+        beforeIds.forEach((id) => {
+          if (!afterIds.has(id)) {
+            deleted[id] = Date.now();
+            changed = true;
+          }
+        });
+        if (changed) {
+          after.deletedDrafts = deleted;
+          after.drafts = Array.isArray(after.drafts) ? after.drafts.filter((draft) => !deleted[String(draft.id)]) : [];
+          originalSetItem.call(this, key, JSON.stringify(after));
+          window.setTimeout(() => schedulePush(100), 0);
+        }
+      }
+      return result;
+    };
+  }
+
   async function login(createAccount = false) {
     try {
       const email = accountEmail?.value.trim().toLowerCase();
@@ -367,6 +443,7 @@
     syncNow(true, true).catch(() => {});
   }, true);
 
+  installStorageHook();
   editor?.addEventListener("input", () => schedulePush(250));
   document.querySelector("#newDraftButton")?.addEventListener("click", () => window.setTimeout(() => schedulePush(450), 0));
   window.addEventListener("beforeunload", () => {
